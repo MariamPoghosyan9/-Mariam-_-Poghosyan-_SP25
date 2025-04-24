@@ -1,4 +1,5 @@
---1
+-- 1. Create Sales Revenue By Category for the Current Quarter:
+
 CREATE OR REPLACE FUNCTION create_sales_revenue_by_category_qtr_view()
 RETURNS void AS $$
 DECLARE
@@ -42,11 +43,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-
+-- Call example:
 SELECT create_sales_revenue_by_category_qtr_view();
 
 
---2
+-- 2. Get Sales Revenue By Category for a Given Quarter and Year:
+
 CREATE OR REPLACE FUNCTION get_sales_revenue_by_category_qtr(qtr INT, yr INT)
 RETURNS TABLE (
     category TEXT,
@@ -69,9 +71,12 @@ RETURNS TABLE (
     HAVING SUM(p.amount) > 0
 $$ LANGUAGE sql STABLE;
 
+-- Call example:
 SELECT * FROM get_sales_revenue_by_category_qtr(2, 2024);
 
---3
+
+-- 3. Most Popular Films By Country (One Film Per Country):
+
 CREATE OR REPLACE FUNCTION most_popular_films_by_countries(countries TEXT[])
 RETURNS TABLE (
     country_name TEXT,
@@ -80,44 +85,35 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
-        co.country,
-        f.title,
-        COUNT(*) AS rental_count
-    FROM 
-        rental r
-    JOIN inventory i ON r.inventory_id = i.inventory_id
-    JOIN film f ON i.film_id = f.film_id
-    JOIN customer cu ON r.customer_id = cu.customer_id
-    JOIN address a ON cu.address_id = a.address_id
-    JOIN city ci ON a.city_id = ci.city_id
-    JOIN country co ON ci.country_id = co.country_id
-    WHERE co.country = ANY(countries)
-    GROUP BY co.country, f.title
-    HAVING COUNT(*) = (
-        SELECT MAX(film_rentals.count_per_film)
-        FROM (
-            SELECT 
-                f2.title,
-                COUNT(*) AS count_per_film
-            FROM 
-                rental r2
-            JOIN inventory i2 ON r2.inventory_id = i2.inventory_id
-            JOIN film f2 ON i2.film_id = f2.film_id
-            JOIN customer cu2 ON r2.customer_id = cu2.customer_id
-            JOIN address a2 ON cu2.address_id = a2.address_id
-            JOIN city ci2 ON a2.city_id = ci2.city_id
-            JOIN country co2 ON ci2.country_id = co2.country_id
-            WHERE co2.country = co.country
-            GROUP BY f2.title
-        ) AS film_rentals
-    );
+    WITH popular_films AS (
+        SELECT 
+            co.country,
+            f.title,
+            COUNT(*) AS rental_count,
+            RANK() OVER (PARTITION BY co.country ORDER BY COUNT(*) DESC) AS rank
+        FROM 
+            rental r
+        JOIN inventory i ON r.inventory_id = i.inventory_id
+        JOIN film f ON i.film_id = f.film_id
+        JOIN customer cu ON r.customer_id = cu.customer_id
+        JOIN address a ON cu.address_id = a.address_id
+        JOIN city ci ON a.city_id = ci.city_id
+        JOIN country co ON ci.country_id = co.country_id
+        WHERE co.country = ANY(countries)
+        GROUP BY co.country, f.title
+    )
+    SELECT country, title, rental_count
+    FROM popular_films
+    WHERE rank = 1;
 END;
 $$ LANGUAGE plpgsql STABLE;
 
+-- Call example:
+SELECT * FROM most_popular_films_by_countries(ARRAY['USA', 'Canada']);
 
 
---4
+-- 4. Films in Stock by Title (Last Customer for Each Film):
+
 CREATE OR REPLACE FUNCTION films_in_stock_by_title(pattern TEXT)
 RETURNS TABLE (
     row_num INT,
@@ -156,10 +152,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Call example:
 SELECT * FROM films_in_stock_by_title('%love%');
 
+-- 5. Insert a New Movie (Handling Language ID):
 
---5
 CREATE OR REPLACE FUNCTION new_movie(
     title TEXT,
     release_year INT DEFAULT EXTRACT(YEAR FROM CURRENT_DATE),
@@ -175,10 +172,8 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Language "%" not found in language table.', language_name;
     END IF;
-
     -- Generate new film_id (assuming serial PK; otherwise use MAX + 1 approach)
-    SELECT MAX(film_id) + 1 INTO new_film_id FROM film;
-
+    SELECT COALESCE(MAX(film_id), 0) + 1 INTO new_film_id FROM film;
     -- Insert new film
     INSERT INTO film (
         film_id, title, description, release_year,
@@ -192,5 +187,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Call examples:
 SELECT new_movie('The Epic Adventure');
 SELECT new_movie('Alien Romance', 2020, 'English');
+
