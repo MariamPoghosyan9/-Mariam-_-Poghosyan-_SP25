@@ -45,28 +45,25 @@ ORDER BY f.release_year DESC;
 
 -- 2-1: Top 3 employees by revenue in 2017
 WITH employee_revenue AS (
-    SELECT s.staff_id,
-           s.store_id,
-           SUM(p.amount) AS total_revenue,
-           MAX(p.payment_date) AS last_payment_date
+    SELECT 
+        s.staff_id,
+        s.store_id,
+        SUM(p.amount) AS total_revenue,
+        MAX(p.payment_date) AS last_payment_date
     FROM public.staff s
     INNER JOIN public.payment p ON s.staff_id = p.staff_id
     INNER JOIN public.rental r ON p.rental_id = r.rental_id
     WHERE EXTRACT(YEAR FROM p.payment_date) = 2017
     GROUP BY s.staff_id, s.store_id
-),
-top_employees AS (
-    SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY staff_id ORDER BY last_payment_date DESC) AS store_rank 
-    FROM employee_revenue
 )
-SELECT s.store_id, e.first_name || ' ' || e.last_name AS full_name, te.total_revenue
-FROM top_employees te
-INNER JOIN public.staff e ON te.staff_id = e.staff_id
-INNER JOIN public.store s ON te.store_id = s.store_id
-WHERE te.store_rank = 1 
-ORDER BY te.total_revenue DESC
+SELECT 
+    e.first_name || ' ' || e.last_name AS full_name,
+    er.total_revenue
+FROM employee_revenue er
+JOIN public.staff e ON er.staff_id = e.staff_id
+ORDER BY er.total_revenue DESC
 LIMIT 3;
+
 
 -- 2-2: Top 5 rented movies and audience age
 WITH movie_rentals AS (
